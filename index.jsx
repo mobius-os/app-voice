@@ -6,6 +6,7 @@ import {
   listClones, saveClone, loadCloneSamples, removeClone, engineIdForLanguage,
   activeClonePointer, setActiveClone, clearActiveClone,
 } from './clones.js'
+import { createSpeechMediaBridge } from './speech-media-bridge.js'
 
 const SPEECH = 'media.speech'
 const SPEECH_MODELS = 'device.speech-models'
@@ -249,6 +250,7 @@ export default function VoiceApp({ appId }) {
   const [activeCloneId, setActiveCloneId] = useState('')
   const speechSessionRef = useRef(null)
   const sampleAudioRef = useRef(null)
+  const mediaBridgeRef = useRef(null)
   const recordingSessionRef = useRef(null)
   const audioContextRef = useRef(null)
   const sourcesRef = useRef(new Set())
@@ -312,6 +314,8 @@ export default function VoiceApp({ appId }) {
       try { source.stop() } catch {}
     }
     sourcesRef.current.clear()
+    try { mediaBridgeRef.current?.dispose() } catch {}
+    mediaBridgeRef.current = null
     const context = audioContextRef.current
     audioContextRef.current = null
     if (context && context.state !== 'closed') context.close().catch(() => {})
@@ -407,6 +411,12 @@ export default function VoiceApp({ appId }) {
     const context = new AudioContext()
     audioContextRef.current = context
     await context.resume()
+    // Play through a media element so the phone's volume buttons (and lock
+    // screen) control the generated voice; fall back to the raw output.
+    const mediaBridge = createSpeechMediaBridge({ context })
+    mediaBridgeRef.current = mediaBridge
+    await mediaBridge?.start()
+    const output = mediaBridge?.destination || context.destination
     nextAtRef.current = context.currentTime + .12
     const queueSamples = (samples) => {
       if (!(samples instanceof Float32Array) || !samples.length || audioContextRef.current !== context) return
@@ -414,7 +424,7 @@ export default function VoiceApp({ appId }) {
       buffer.copyToChannel(samples, 0)
       const source = context.createBufferSource()
       source.buffer = buffer
-      source.connect(context.destination)
+      source.connect(output)
       sourcesRef.current.add(source)
       source.onended = () => sourcesRef.current.delete(source)
       const startAt = Math.max(nextAtRef.current, context.currentTime + .08)

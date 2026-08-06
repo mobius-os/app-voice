@@ -1,7 +1,7 @@
 {
   "id": "voice",
   "name": "Voice",
-  "version": "1.11.0",
+  "version": "1.12.0",
   "description": "Give your agent a voice in chat or any compatible app.",
   "author": "hamzamerzic",
   "license": "MIT",
@@ -15,6 +15,7 @@
     "clones.js",
     "icon-data.js",
     "local-speech.js",
+    "speech-media-bridge.js",
     "licenses/XN-RUNTIME-LICENSES.md",
     "voice.md"
   ],
