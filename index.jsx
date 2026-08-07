@@ -198,7 +198,7 @@ const CSS = `
 
 /* mobius-ui:ReducedMotion v1 — keep in sync; library candidate. Diverge below the marker only. */
 @media (prefers-reduced-motion: reduce) {
-  .vc-btn, .vc-progress span { transition: none; }
+  .vc-btn, .vc-progress span, .vc-level span { transition: none; }
   .vc-btn:active { transform: none; }
 }
 /* /mobius-ui:ReducedMotion */
@@ -296,7 +296,21 @@ export default function VoiceApp({ appId }) {
       model.cloned && model.language === record.language && model.id === catalog.activeModelId
     ))
     hydratedRef.current = true
-    if (!shellActiveIsClone) pushActiveCloneToShell(record).catch(() => {})
+    async function hydrateClone() {
+      try {
+        // Validate the instance-owned recording even when this device already
+        // has its mirror selected, so an old silent clone cannot remain active.
+        if (shellActiveIsClone) await loadCloneSamples(record.id)
+        else await pushActiveCloneToShell(record)
+      } catch (caught) {
+        if (caught?.code === 'silent_recording') {
+          await clearActiveClone().catch(() => {})
+          setActiveCloneId('')
+        }
+        setError(caught?.message || 'That cloned voice could not be loaded.')
+      }
+    }
+    hydrateClone()
   }, [loading, catalog, serverClones, activeCloneId])
 
   const stopPreview = useCallback(() => {
@@ -885,7 +899,7 @@ export default function VoiceApp({ appId }) {
                       {recording && <>
                         <div className="vc-record-status"><span>{(recordingMs / 1000).toFixed(1)} seconds</span><span>8 seconds max</span></div>
                         <div className="vc-progress" role="progressbar" aria-label="Recording progress" aria-valuemin="0" aria-valuemax="8000" aria-valuenow={Math.round(recordingMs)}><span style={{ width: `${recordingMs / 80}%` }} /></div>
-                        <div className="vc-level" aria-label="Microphone level"><span style={{ width: `${Math.max(5, recordingLevel * 100)}%` }} /></div>
+                        <div className="vc-level" role="meter" aria-label="Microphone level" aria-valuemin="0" aria-valuemax="100" aria-valuenow={Math.round(recordingLevel * 100)}><span style={{ width: `${recordingLevel * 100}%` }} /></div>
                       </>}
                     </div>
                   </section>}
