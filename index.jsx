@@ -408,7 +408,16 @@ export default function VoiceApp({ appId }) {
     }
     const context = new AudioContext()
     audioContextRef.current = context
-    await context.resume()
+    try {
+      await context.resume()
+      if (context.state !== 'running') {
+        throw new Error('This browser did not allow audio playback to start.')
+      }
+    } catch (caught) {
+      if (audioContextRef.current === context) stopPreview()
+      setError(caught?.message || 'This browser did not allow audio playback to start.')
+      return
+    }
     // Use the native Web Audio output directly. A detached MediaStream feeding
     // a hidden <audio> element adds a second autoplay gate and can leave a
     // successful synthesis with no audible destination.
@@ -429,7 +438,21 @@ export default function VoiceApp({ appId }) {
       source.start(startAt)
     }
     if (audioContextRef.current !== context) return
-    const session = makeSession(queueSamples)
+    let session
+    try {
+      // Start the AudioContext from the button gesture before any asynchronous
+      // storage read. Clone recordings live on the instance, so loading one
+      // first can otherwise make the browser reject the later audio start.
+      session = await makeSession(queueSamples)
+    } catch (caught) {
+      if (audioContextRef.current === context) stopPreview()
+      setError(caught?.message || 'The voice preview could not start.')
+      return
+    }
+    if (audioContextRef.current !== context) {
+      session?.cancel?.()
+      return
+    }
     speechSessionRef.current = session
     setSpeaking(speakingId)
     setError('')
@@ -452,26 +475,20 @@ export default function VoiceApp({ appId }) {
     makeSession: (onAudio) => synthesizeLocally({ capabilities, modelId: model.id, text, onAudio }),
   })
 
-  const previewClone = async (record, text = preview) => {
-    let samples
-    try {
-      samples = await loadCloneSamples(record.id)
-    } catch {
-      setError('That cloned voice could not be loaded from your instance.')
-      return
-    }
-    await runSynthesis({
-      speakingId: record.id,
-      sampleRate: 24_000,
-      makeSession: (onAudio) => synthesizeLocally({
+  const previewClone = (record, text = preview) => runSynthesis({
+    speakingId: record.id,
+    sampleRate: 24_000,
+    makeSession: async (onAudio) => {
+      const samples = await loadCloneSamples(record.id)
+      return synthesizeLocally({
         capabilities,
-        engineId: engineIdForLanguage(language),
+        engineId: engineIdForLanguage(record.language),
         clonedVoiceSamples: samples,
         text,
         onAudio,
-      }),
-    })
-  }
+      })
+    },
+  })
 
   const startVoiceSample = async (model) => {
     if (speaking === model.id) {
