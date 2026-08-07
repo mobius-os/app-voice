@@ -1,7 +1,7 @@
 {
   "id": "voice",
   "name": "Voice",
-  "version": "1.12.4",
+  "version": "1.12.5",
   "description": "Give your agent a voice in chat or any compatible app.",
   "author": "mobius-os",
   "license": "MIT",
