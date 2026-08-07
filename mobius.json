@@ -1,7 +1,7 @@
 {
   "id": "voice",
   "name": "Voice",
-  "version": "1.12.5",
+  "version": "1.12.6",
   "description": "Give your agent a voice in chat or any compatible app.",
   "author": "mobius-os",
   "license": "MIT",
@@ -36,7 +36,7 @@
   "capabilities": {
     "device.speech-models": {
       "version": 1,
-      "reason": "Download, verify, select, and remove local voices, including private cloned recordings saved in this browser.",
+      "reason": "Download, verify, select, and remove local voices, including a per-device mirror of a private clone stored on this Möbius instance.",
       "limits": {
         "max_bytes": 805306368,
         "max_asset_bytes": 268435456,

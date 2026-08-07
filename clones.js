@@ -13,6 +13,10 @@ const ACTIVE_PATH = 'clones/active.json'
 const CLONE_SAMPLE_RATE = 24_000
 const MAX_CLONE_SECONDS = 8
 const MIN_CLONE_SECONDS = 3
+const MIN_SOURCE_SAMPLE_RATE = 8_000
+const MAX_SOURCE_SAMPLE_RATE = 384_000
+const MIN_CLONE_SIGNAL_RMS = 0.001
+const MIN_CLONE_SIGNAL_RANGE = 0.005
 
 const LANGUAGE_ENGINE = Object.freeze({
   English: 'pocket-tts-xn-q8-english',
@@ -73,6 +77,40 @@ function decodePcm16(base64) {
   return samples
 }
 
+function invalidCloneAudioError() {
+  const error = new Error('That recording contains invalid audio. Record it again.')
+  error.code = 'invalid_recording'
+  return error
+}
+
+function silentCloneError() {
+  const error = new Error('We could not hear clear speech in that recording. Check your microphone and record again.')
+  error.code = 'silent_recording'
+  return error
+}
+
+function assertUsableCloneSignal(samples) {
+  if (!(samples instanceof Float32Array) || samples.length === 0) throw invalidCloneAudioError()
+  let total = 0
+  let min = Infinity
+  let max = -Infinity
+  for (let index = 0; index < samples.length; index += 1) {
+    const sample = samples[index]
+    if (!Number.isFinite(sample) || Math.abs(sample) > 1) throw invalidCloneAudioError()
+    total += sample
+    min = Math.min(min, sample)
+    max = Math.max(max, sample)
+  }
+  if (max - min < MIN_CLONE_SIGNAL_RANGE) throw silentCloneError()
+  const mean = total / samples.length
+  let variance = 0
+  for (let index = 0; index < samples.length; index += 1) {
+    const difference = samples[index] - mean
+    variance += difference * difference
+  }
+  if (Math.sqrt(variance / samples.length) < MIN_CLONE_SIGNAL_RMS) throw silentCloneError()
+}
+
 function storage() {
   const store = globalThis.mobius?.storage
   if (!store) throw new Error('Voice storage is unavailable in this version of Möbius.')
@@ -115,7 +153,11 @@ export async function clearActiveClone() {
 
 /** Save a new recording as a named clone. Returns its metadata record. */
 export async function saveClone({ name, language, samples, sampleRate }) {
-  if (!(samples instanceof Float32Array) || !engineIdForLanguage(language)) {
+  if (!(samples instanceof Float32Array)
+    || !Number.isSafeInteger(sampleRate)
+    || sampleRate < MIN_SOURCE_SAMPLE_RATE
+    || sampleRate > MAX_SOURCE_SAMPLE_RATE
+    || !engineIdForLanguage(language)) {
     throw new Error('That recording could not be saved.')
   }
   const bounded = samples.subarray(0, Math.round(sampleRate * MAX_CLONE_SECONDS))
@@ -125,6 +167,7 @@ export async function saveClone({ name, language, samples, sampleRate }) {
     error.code = 'too_short'
     throw error
   }
+  assertUsableCloneSignal(resampled)
   const record = {
     id: randomId(),
     name: String(name || '').trim().slice(0, 40) || 'My voice',
@@ -141,7 +184,18 @@ export async function saveClone({ name, language, samples, sampleRate }) {
 export async function loadCloneSamples(id) {
   const record = await storage().get(clonePath(id)).catch(() => null)
   if (!record?.pcm16Base64) throw new Error('That cloned voice could not be loaded.')
-  return decodePcm16(record.pcm16Base64)
+  let samples
+  try {
+    samples = decodePcm16(record.pcm16Base64)
+  } catch {
+    throw new Error('That cloned voice could not be loaded.')
+  }
+  if (samples.length < CLONE_SAMPLE_RATE * MIN_CLONE_SECONDS
+    || samples.length > CLONE_SAMPLE_RATE * MAX_CLONE_SECONDS) {
+    throw new Error('That cloned voice could not be loaded.')
+  }
+  assertUsableCloneSignal(samples)
+  return samples
 }
 
 export async function removeClone(id) {
