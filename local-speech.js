@@ -85,7 +85,7 @@ export function synthesizeLocally({
       // The worker has copied this chunk into its Wasm allocation. Release
       // exactly one more chunk from the shell, keeping the frame queue bounded
       // while cloning has both the language model and its encoder in memory.
-      session?.control?.('next')
+      session?.control?.('chunk-accepted')
       return
     }
     if (data.type === 'load-complete') {
@@ -124,8 +124,8 @@ export function synthesizeLocally({
   // A clone streams the bare engine (by engineId) and brings its own recording;
   // a built-in voice streams its model (by modelId) and uses the manifest's.
   session = engineId
-    ? capabilities().open(SPEECH_MODELS, { operation: 'read', engineId, chunkAcknowledgements: true })
-    : capabilities().open(SPEECH_MODELS, { operation: 'read', modelId, chunkAcknowledgements: true })
+    ? capabilities().open(SPEECH_MODELS, { operation: 'read', engineId })
+    : capabilities().open(SPEECH_MODELS, { operation: 'read', modelId })
   // The capability starts streaming as soon as it is opened, so every message
   // to the worker is sequenced behind the fetch that creates it.
   let pump = started
