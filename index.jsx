@@ -243,6 +243,7 @@ export default function VoiceApp({ appId }) {
   const [speaking, setSpeaking] = useState('')
   const [cloneOpen, setCloneOpen] = useState(false)
   const [recording, setRecording] = useState(false)
+  const [recordingPending, setRecordingPending] = useState(false)
   const [recordingLevel, setRecordingLevel] = useState(0)
   const [recordingMs, setRecordingMs] = useState(0)
   const [confirmCloneDelete, setConfirmCloneDelete] = useState(false)
@@ -600,15 +601,23 @@ export default function VoiceApp({ appId }) {
       setError(`Download ${language} before cloning a voice.`)
       return
     }
+    if (recordingSessionRef.current) return
     stopPreview()
     setError('')
-    setRecording(true)
+    // The browser asks for microphone permission before the capability's ready
+    // promise resolves. Keep the timer stopped while that prompt is open: the
+    // recording limit begins only once audio capture has actually started.
+    setRecordingPending(true)
     setRecordingLevel(0)
-    const session = capabilities().open(MICROPHONE, { maxDurationMs: 8000 })
-    recordingSessionRef.current = session
-    const unsubscribe = session.on('level', (value) => setRecordingLevel(Math.min(1, Number(value) || 0)))
+    let session
+    let unsubscribe = () => {}
     try {
+      session = capabilities().open(MICROPHONE, { maxDurationMs: 8000 })
+      recordingSessionRef.current = session
+      unsubscribe = session.on('level', (value) => setRecordingLevel(Math.min(1, Number(value) || 0)))
       await session.ready
+      setRecordingPending(false)
+      setRecording(true)
       const result = await session.result
       // One clone per language: the new recording replaces the old one, and it
       // is saved to this instance so every device sees it.
@@ -629,6 +638,7 @@ export default function VoiceApp({ appId }) {
     } finally {
       unsubscribe()
       if (recordingSessionRef.current === session) recordingSessionRef.current = null
+      setRecordingPending(false)
       setRecording(false)
       setRecordingLevel(0)
     }
@@ -643,6 +653,7 @@ export default function VoiceApp({ appId }) {
   const visibleModels = languageModels.filter((model) => !model.cloned)
   const clonedRecord = serverClones.find((item) => item.language === language) || null
   const cloneIsActive = Boolean(clonedRecord) && clonedRecord.id === activeCloneId
+  const recordingInFlight = recording || recordingPending
   const downloadedCount = catalog.models.filter((model) => model.profileState === 'ready').length
   const preview = previews[language] || ''
   const clonePrompt = CLONE_PROMPTS[language] || CLONE_PROMPTS.English
@@ -679,7 +690,7 @@ export default function VoiceApp({ appId }) {
           <div className="vc-languages" aria-label="Language">
             {catalog.engines.map((item) => {
               const label = item.languages[0]
-              return <button className="vc-language" type="button" aria-pressed={label === language} disabled={recording || Boolean(busy)} key={item.id} onClick={() => chooseLanguage(label)}>{label}</button>
+              return <button className="vc-language" type="button" aria-pressed={label === language} disabled={recordingInFlight || Boolean(busy)} key={item.id} onClick={() => chooseLanguage(label)}>{label}</button>
             })}
           </div>
 
@@ -708,7 +719,7 @@ export default function VoiceApp({ appId }) {
                           type="button"
                           aria-label={`${engine.state === 'partial' ? 'Resume' : 'Download'} ${engine.name}, ${bytesLabel(engine.storedBytes)}`}
                           onClick={() => installEngine(engine)}
-                          disabled={recording || Boolean(busy)}
+                          disabled={recordingInFlight || Boolean(busy)}
                         >
                           <Download /> {isBusy ? `Downloading ${progress || 0}%` : engine.state === 'partial' ? 'Resume' : 'Download model'}
                         </button>
@@ -716,7 +727,7 @@ export default function VoiceApp({ appId }) {
                     )}
                     {engineReady && (
                       <div className="vc-actions">
-                        <button className="vc-btn vc-btn-secondary" type="button" onClick={() => removeEngine(engine)} disabled={recording || Boolean(busy)}>
+                        <button className="vc-btn vc-btn-secondary" type="button" onClick={() => removeEngine(engine)} disabled={recordingInFlight || Boolean(busy)}>
                           <Trash /> Remove language model
                         </button>
                       </div>
@@ -753,7 +764,7 @@ export default function VoiceApp({ appId }) {
                           <button
                             type="button"
                             className="vc-voice-choice"
-                            disabled={recording || Boolean(busy) || isActive || !engineReady}
+                            disabled={recordingInFlight || Boolean(busy) || isActive || !engineReady}
                             onClick={() => chooseModel(model)}
                             aria-label={`${action}: ${model.voice}, ${bytesLabel(model.profileBytes)}`}
                           >
@@ -767,7 +778,7 @@ export default function VoiceApp({ appId }) {
                             {model.profileState === 'ready' && <button
                               type="button"
                               className="vc-sample-btn vc-remove-btn"
-                              disabled={recording || Boolean(busy)}
+                              disabled={recordingInFlight || Boolean(busy)}
                               onClick={() => removeModel(model)}
                               aria-label={`Remove ${model.voice} download`}
                               title="Remove download"
@@ -775,7 +786,7 @@ export default function VoiceApp({ appId }) {
                             <button
                               type="button"
                               className="vc-sample-btn"
-                              disabled={recording || Boolean(busy)}
+                              disabled={recordingInFlight || Boolean(busy)}
                               onClick={() => startVoiceSample(model)}
                               aria-label={speaking === model.id ? `Stop ${model.voice} sample` : `Hear ${model.voice} sample`}
                               title={speaking === model.id ? 'Stop sample' : 'Hear sample'}
@@ -794,7 +805,7 @@ export default function VoiceApp({ appId }) {
                         type="button"
                         className="vc-voice-choice"
                         onClick={() => clonedRecord ? (cloneIsActive ? undefined : selectClone(clonedRecord)) : setCloneOpen(true)}
-                        disabled={recording || Boolean(busy) || !engineReady || cloneIsActive}
+                        disabled={recordingInFlight || Boolean(busy) || !engineReady || cloneIsActive}
                         aria-label={clonedRecord ? `Use ${clonedRecord.name} as your voice` : `Set up a cloned ${language} voice`}
                       >
                         <span>
@@ -807,7 +818,7 @@ export default function VoiceApp({ appId }) {
                         {clonedRecord && <button
                           type="button"
                           className="vc-sample-btn"
-                          disabled={recording || Boolean(busy) || !engineReady}
+                          disabled={recordingInFlight || Boolean(busy) || !engineReady}
                           onClick={() => speaking === clonedRecord.id ? stopPreview() : previewClone(clonedRecord)}
                           aria-label={speaking === clonedRecord.id ? 'Stop cloned voice' : 'Hear cloned voice'}
                           title={speaking === clonedRecord.id ? 'Stop' : 'Hear it'}
@@ -815,7 +826,7 @@ export default function VoiceApp({ appId }) {
                         {clonedRecord && <button
                           type="button"
                           className="vc-sample-btn vc-remove-btn"
-                          disabled={recording || Boolean(busy)}
+                          disabled={recordingInFlight || Boolean(busy)}
                           onClick={() => setConfirmCloneDelete(true)}
                           aria-label={`Delete recorded ${language} voice`}
                           title="Delete recording"
@@ -823,7 +834,7 @@ export default function VoiceApp({ appId }) {
                         <button
                           type="button"
                           className="vc-sample-btn"
-                          disabled={recording || Boolean(busy) || !engineReady}
+                          disabled={recordingInFlight || Boolean(busy) || !engineReady}
                           onClick={() => setCloneOpen((current) => !current)}
                           aria-label={cloneOpen ? 'Close clone setup' : clonedRecord ? 'Re-clone voice' : 'Set up cloned voice'}
                           title={clonedRecord ? 'Re-clone' : 'Set up'}
@@ -846,17 +857,18 @@ export default function VoiceApp({ appId }) {
                   {cloneOpen && engineReady && <section className="vc-card vc-model vc-clone-setup">
                     <span className="vc-model-icon" aria-hidden="true"><TextToSpeech /></span>
                     <div className="vc-card-main">
-                      <div className={`vc-card-title${recording ? ' vc-recording' : ''}`}>{recording ? 'Recording…' : clonedRecord ? 'Re-clone Voice' : 'Set up Clone Voice'}</div>
+                      <div className={`vc-card-title${recording ? ' vc-recording' : ''}`}>{recording ? 'Recording…' : recordingPending ? 'Allow microphone access' : clonedRecord ? 'Re-clone Voice' : 'Set up Clone Voice'}</div>
                       <div className="vc-card-sub">Read the short script, naturally and at your usual pace.</div>
                       <div className="vc-read-prompt">
                         <strong>Say this</strong>
                         <p>{clonePrompt}</p>
                       </div>
                       <div className="vc-actions">
-                        <button className={`vc-btn ${recording ? 'vc-btn-secondary' : 'vc-btn-primary'}`} type="button" onClick={recording ? finishRecording : startRecording}>
-                          {recording ? <><Stop /> Finish</> : <><TextToSpeech /> {clonedRecord ? 'Re-clone' : 'Record'}</>}
+                        <button className={`vc-btn ${recording ? 'vc-btn-secondary' : 'vc-btn-primary'}`} type="button" onClick={recording ? finishRecording : startRecording} disabled={recordingPending}>
+                          {recording ? <><Stop /> Finish</> : recordingPending ? <><TextToSpeech /> Waiting for permission…</> : <><TextToSpeech /> {clonedRecord ? 'Re-clone' : 'Record'}</>}
                         </button>
                       </div>
+                      {recordingPending && <div className="vc-record-status"><span>Allow microphone access to start the 8-second recording.</span></div>}
                       {recording && <>
                         <div className="vc-record-status"><span>{(recordingMs / 1000).toFixed(1)} seconds</span><span>8 seconds max</span></div>
                         <div className="vc-progress" role="progressbar" aria-label="Recording progress" aria-valuemin="0" aria-valuemax="8000" aria-valuenow={Math.round(recordingMs)}><span style={{ width: `${recordingMs / 80}%` }} /></div>
