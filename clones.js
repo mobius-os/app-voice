@@ -39,50 +39,27 @@ function randomId() {
     || `clone-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-// Linear interpolation has NO anti-aliasing: downsampling a 48 kHz mic recording
-// this way folds its high-frequency energy (sibilants, hiss) back into the
-// band, corrupting the signal the voice encoder hears and producing a harsh,
-// unnatural "not me" clone. Kept only as a fallback for environments without
-// Web Audio.
-function linearResampleMono(samples, sourceRate, targetRate) {
-  const length = Math.max(1, Math.round(samples.length * targetRate / sourceRate))
-  const result = new Float32Array(length)
-  const ratio = sourceRate / targetRate
-  for (let index = 0; index < length; index += 1) {
-    const position = index * ratio
-    const left = Math.min(samples.length - 1, Math.floor(position))
-    const right = Math.min(samples.length - 1, left + 1)
-    const mix = position - left
-    result[index] = samples[left] * (1 - mix) + samples[right] * mix
-  }
-  return result
-}
-
-// Downsample to the clone rate WITH anti-aliasing, matching the reference
-// pipeline (scipy `resample_poly`, which low-pass filters before decimating).
-// OfflineAudioContext applies the browser's high-quality resampler, so the
-// encoder receives a clean 24 kHz signal rather than an aliased one.
+// Downsample the recording to the clone rate with anti-aliasing, matching the
+// reference pipeline (scipy resample_poly). OfflineAudioContext is the browser's
+// high-quality, anti-aliased resampler — the same audio stack that records and
+// plays the clone. A naive linear resample aliases sibilants into a harsh, "not
+// me" clone, so there is deliberately no fallback that could silently reintroduce
+// that; if Web Audio is somehow missing we fail loudly.
 async function resampleMono(samples, sourceRate, targetRate = CLONE_SAMPLE_RATE) {
   const input = samples instanceof Float32Array ? samples : new Float32Array(samples)
   if (sourceRate === targetRate) return new Float32Array(input)
   const OfflineCtx = globalThis.OfflineAudioContext || globalThis.webkitOfflineAudioContext
-  if (OfflineCtx && input.length) {
-    try {
-      const frames = Math.max(1, Math.round(input.length * targetRate / sourceRate))
-      const context = new OfflineCtx(1, frames, targetRate)
-      const buffer = context.createBuffer(1, input.length, sourceRate)
-      buffer.copyToChannel(input, 0)
-      const source = context.createBufferSource()
-      source.buffer = buffer
-      source.connect(context.destination)
-      source.start()
-      const rendered = await context.startRendering()
-      return new Float32Array(rendered.getChannelData(0))
-    } catch {
-      // Fall back to the naive path if the platform rejects the offline graph.
-    }
-  }
-  return linearResampleMono(input, sourceRate, targetRate)
+  if (!OfflineCtx) throw invalidCloneAudioError()
+  const frames = Math.max(1, Math.round(input.length * targetRate / sourceRate))
+  const context = new OfflineCtx(1, frames, targetRate)
+  const buffer = context.createBuffer(1, input.length, sourceRate)
+  buffer.copyToChannel(input, 0)
+  const source = context.createBufferSource()
+  source.buffer = buffer
+  source.connect(context.destination)
+  source.start()
+  const rendered = await context.startRendering()
+  return new Float32Array(rendered.getChannelData(0))
 }
 
 function encodePcm16(samples) {
