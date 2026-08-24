@@ -43,10 +43,11 @@ const CSS = `
 
 /* mobius-ui:Header v1 — keep in sync; library candidate. Diverge below the marker only. */
 .vc-header {
-  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  min-height: 48px; padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+  flex: 0 0 auto; min-height: 48px;
   background: var(--surface); border-bottom: 1px solid var(--border);
 }
+.vc-header-inner { width: 100%; max-width: 712px; margin-inline: auto; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
 .vc-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .vc-mark {
   flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px;
@@ -66,7 +67,6 @@ const CSS = `
 .vc-page { width: 100%; max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .vc-library-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 2px 2px 4px; }
 .vc-library-head h2 { margin: 2px 0 0; font-size: 24px; line-height: 1.1; letter-spacing: -.025em; }
-.vc-eyebrow { margin: 0; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 .vc-count { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 600; }
 .vc-languages { display: flex; gap: 7px; overflow-x: auto; padding: 0 1px 2px; scrollbar-width: none; }
 .vc-languages::-webkit-scrollbar { display: none; }
@@ -698,19 +698,21 @@ export default function VoiceApp({ appId }) {
     <div className="vc-root">
       <style>{CSS}</style>
       <header className="vc-header">
-        <div className="vc-brand">
-          <span className="vc-mark"><img src={VOICE_ICON_DATA_URL} alt="" width="38" height="38" /></span>
-          <div className="vc-brand-text">
-            <h1 className="vc-title">Voice</h1>
-            <span className="vc-subtitle">Give your agent a voice</span>
+        <div className="vc-header-inner">
+          <div className="vc-brand">
+            <span className="vc-mark"><img src={VOICE_ICON_DATA_URL} alt="" width="38" height="38" /></span>
+            <div className="vc-brand-text">
+              <h1 className="vc-title">Voice</h1>
+              <span className="vc-subtitle">Give your agent a voice</span>
+            </div>
           </div>
+          <div className="vc-header-right" />
         </div>
-        <div className="vc-header-right" />
       </header>
       <div className="vc-scroll">
         <main className="vc-page">
           <section className="vc-library-head">
-            <div><p className="vc-eyebrow">Pocket TTS</p><h2>Choose your voice</h2></div>
+            <h2>Choose your voice</h2>
             <span className="vc-count">{downloadedCount} downloaded</span>
           </section>
 
