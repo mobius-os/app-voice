@@ -43,8 +43,7 @@ const CSS = `
 
 /* mobius-ui:Header v1 — keep in sync; library candidate. Diverge below the marker only. */
 .vc-header {
-  flex: 0 0 auto; min-height: 48px;
-  background: var(--surface); border-bottom: 1px solid var(--border);
+  flex: 0 0 auto; min-height: 48px; background: var(--bg);
 }
 .vc-header-inner { width: 100%; max-width: 712px; margin-inline: auto; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
