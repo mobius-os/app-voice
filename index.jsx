@@ -43,7 +43,7 @@ const CSS = `
 
 /* mobius-ui:Header v1 — keep in sync; library candidate. Diverge below the marker only. */
 .vc-header {
-  flex: 0 0 auto; min-height: 48px; background: var(--bg);
+  flex: 0 0 auto; min-height: 48px; background: var(--bg); border-bottom: 1px solid var(--border);
 }
 .vc-header-inner { width: 100%; max-width: 712px; margin-inline: auto; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
@@ -204,6 +204,21 @@ const CSS = `
 @media (max-width: 520px) {
   .vc-voice-grid { grid-template-columns: 1fr; }
 }
+
+/* mobius-ui:CenteredRail v1 */
+@media (min-width: 900px) {
+  .vc-root {
+    background:
+      linear-gradient(var(--bg), var(--bg)) center / min(100%, 712px) 100% no-repeat,
+      radial-gradient(ellipse 76% 112% at 50% 46%,
+        color-mix(in srgb, var(--accent) 18%, var(--bg)) 0%,
+        color-mix(in srgb, var(--accent) 7%, var(--bg)) 46%,
+        color-mix(in srgb, var(--text) 2%, var(--bg)) 100%);
+
+  }
+  .vc-header { width: min(100%, 712px); margin-inline: auto; }
+}
+/* /mobius-ui:CenteredRail */
 `
 
 function capabilities() {
