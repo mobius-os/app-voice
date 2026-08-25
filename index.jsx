@@ -45,11 +45,11 @@ const CSS = `
 .vc-header {
   flex: 0 0 auto; min-height: 48px; background: var(--bg); border-bottom: 1px solid var(--border);
 }
-.vc-header-inner { width: 100%; max-width: 712px; margin-inline: auto; display: flex; align-items: center;
+.vc-header-inner { width: 100%; max-width: 760px; margin-inline: auto; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
 .vc-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .vc-mark {
-  flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px;
+  flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px;
   display: flex; align-items: center; justify-content: center;
   overflow: hidden; color: var(--accent);
 }
@@ -63,7 +63,7 @@ const CSS = `
 .vc-header-right { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 /* /mobius-ui:Header */
 
-.vc-page { width: 100%; max-width: 680px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.vc-page { width: 100%; max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 .vc-library-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; padding: 2px 2px 4px; }
 .vc-library-head h2 { margin: 2px 0 0; font-size: 24px; line-height: 1.1; letter-spacing: -.025em; }
 .vc-count { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 600; }
@@ -208,15 +208,10 @@ const CSS = `
 /* mobius-ui:CenteredRail v1 */
 @media (min-width: 900px) {
   .vc-root {
-    background:
-      linear-gradient(var(--bg), var(--bg)) center / min(100%, 712px) 100% no-repeat,
-      radial-gradient(ellipse 76% 112% at 50% 46%,
-        color-mix(in srgb, var(--accent) 18%, var(--bg)) 0%,
-        color-mix(in srgb, var(--accent) 7%, var(--bg)) 46%,
-        color-mix(in srgb, var(--text) 2%, var(--bg)) 100%);
 
   }
-  .vc-header { width: min(100%, 712px); margin-inline: auto; }
+  .vc-header { width: min(100%, 760px); margin-inline: auto; }
+
 }
 /* /mobius-ui:CenteredRail */
 `
