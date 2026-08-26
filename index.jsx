@@ -43,10 +43,10 @@ const CSS = `
 
 /* mobius-ui:Header v1 — keep in sync; library candidate. Diverge below the marker only. */
 .vc-header {
-  flex: 0 0 auto; min-height: 48px; background: var(--bg); border-bottom: 1px solid var(--border);
+  flex: 0 0 auto; min-height: 48px; background: var(--bg);
 }
 .vc-header-inner { width: 100%; max-width: 760px; margin-inline: auto; display: flex; align-items: center;
-  justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
+  justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; border-bottom: 1px solid var(--border); }
 .vc-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .vc-mark {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px;
