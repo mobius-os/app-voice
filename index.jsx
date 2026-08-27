@@ -45,8 +45,9 @@ const CSS = `
 .vc-header {
   flex: 0 0 auto; min-height: 48px; background: var(--bg);
 }
-.vc-header-inner { width: 100%; max-width: 760px; margin-inline: auto; display: flex; align-items: center;
-  justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; border-bottom: 1px solid var(--border); }
+.vc-header-inner { position: relative; width: 100%; max-width: 760px; margin-inline: auto; display: flex; align-items: center;
+  justify-content: space-between; gap: 12px; padding: max(12px, env(safe-area-inset-top)) 16px 12px; }
+.vc-header-inner::after { content: ''; position: absolute; inset-inline: 16px; bottom: 0; height: 1px; background: var(--border); }
 .vc-brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
 .vc-mark {
   flex: 0 0 auto; width: 34px; height: 34px; border-radius: 8px;
