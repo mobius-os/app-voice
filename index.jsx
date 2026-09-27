@@ -150,10 +150,10 @@ const CSS = `
 }
 .vc-badge svg { width: 12px; height: 12px; }
 .vc-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-.vc-progress { height: 5px; margin-top: 12px; overflow: hidden; border-radius: 99px; background: var(--surface2); }
+.vc-progress { height: 5px; margin-top: 12px; overflow: hidden; border-radius: 99px; background: var(--surface-2); }
 .vc-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .2s ease; }
 .vc-error { padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--danger) 55%, var(--border)); border-radius: 10px; color: var(--danger); font-size: 13px; line-height: 1.45; cursor: text; user-select: text; -webkit-user-select: text; }
-.vc-level { height: 5px; margin-top: 10px; overflow: hidden; border-radius: 99px; background: var(--surface2); }
+.vc-level { height: 5px; margin-top: 10px; overflow: hidden; border-radius: 99px; background: var(--surface-2); }
 .vc-level span { display: block; height: 100%; border-radius: inherit; background: var(--danger); transition: width .08s linear; }
 .vc-recording { color: var(--danger); }
 
@@ -189,7 +189,7 @@ const CSS = `
 .vc-btn-primary:hover { filter: brightness(1.06); }
 .vc-btn-danger { background: var(--danger); border-color: var(--danger); color: white; }
 .vc-btn-danger:hover { filter: brightness(1.06); }
-.vc-btn-secondary { background: var(--surface2, var(--surface)); }
+.vc-btn-secondary { background: var(--surface-2, var(--surface)); }
 .vc-btn-secondary:hover { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
 /* /mobius-ui:Button */
 
