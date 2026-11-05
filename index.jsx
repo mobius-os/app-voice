@@ -106,6 +106,7 @@ const CSS = `
 .vc-voice-choice:disabled, .vc-sample-btn:disabled { cursor: default; opacity: .58; }
 .vc-voice-name { display: block; font-size: 14px; font-weight: 720; }
 .vc-voice-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 10.5px; }
+.vc-voice-warning { color: var(--danger); }
 .vc-voice-action { flex: 0 0 auto; color: var(--accent); font-size: 11px; font-weight: 750; }
 .vc-voice-option.is-selected .vc-voice-action { color: var(--green); }
 .vc-sample-btn {
@@ -250,6 +251,10 @@ export default function VoiceApp({ appId }) {
   const [language, setLanguage] = useState('English')
   const [previews, setPreviews] = useState(() => ({ ...PREVIEW_TEXT }))
   const [speaking, setSpeaking] = useState('')
+  // What a preview is doing before its first sound. Loading the language model
+  // and preparing a voice can take tens of seconds on a phone; without this
+  // the Stop button is the only sign anything is happening.
+  const [previewStage, setPreviewStage] = useState('')
   const [cloneOpen, setCloneOpen] = useState(false)
   const [recording, setRecording] = useState(false)
   const [recordingPending, setRecordingPending] = useState(false)
@@ -343,6 +348,7 @@ export default function VoiceApp({ appId }) {
     try { if (globalThis.navigator?.audioSession) globalThis.navigator.audioSession.type = 'auto' } catch {}
     nextAtRef.current = 0
     setSpeaking('')
+    setPreviewStage('')
   }, [])
 
   useEffect(() => () => {
@@ -448,8 +454,17 @@ export default function VoiceApp({ appId }) {
     try { if (globalThis.navigator?.audioSession) globalThis.navigator.audioSession.type = 'playback' } catch {}
     const output = context.destination
     nextAtRef.current = context.currentTime + .12
+    setSpeaking(speakingId)
+    setPreviewStage('Loading voice…')
+    const showProgress = (value) => {
+      if (audioContextRef.current !== context) return
+      if (value?.stage === 'loading') setPreviewStage(`Loading voice · ${Math.round(value.percent || 0)}%`)
+      else if (value?.stage === 'preparing') setPreviewStage('Preparing voice…')
+      else if (value?.stage === 'generating') setPreviewStage('Starting to speak…')
+    }
     const queueSamples = (samples) => {
       if (!(samples instanceof Float32Array) || !samples.length || audioContextRef.current !== context) return
+      setPreviewStage('')
       const buffer = context.createBuffer(1, samples.length, sampleRate)
       buffer.copyToChannel(samples, 0)
       const source = context.createBufferSource()
@@ -467,7 +482,7 @@ export default function VoiceApp({ appId }) {
       // Start the AudioContext from the button gesture before any asynchronous
       // storage read. Clone recordings live on the instance, so loading one
       // first can otherwise make the browser reject the later audio start.
-      session = await makeSession(queueSamples)
+      session = await makeSession(queueSamples, showProgress)
     } catch (caught) {
       if (audioContextRef.current === context) stopPreview()
       setError(caught?.message || 'The voice preview could not start.')
@@ -478,7 +493,6 @@ export default function VoiceApp({ appId }) {
       return
     }
     speechSessionRef.current = session
-    setSpeaking(speakingId)
     setError('')
     try {
       await session.result
@@ -496,13 +510,15 @@ export default function VoiceApp({ appId }) {
   const startPreview = (model, text = preview) => runSynthesis({
     speakingId: model.id,
     sampleRate: model.sampleRate || 24_000,
-    makeSession: (onAudio) => synthesizeLocally({ capabilities, modelId: model.id, text, onAudio }),
+    makeSession: (onAudio, onProgress) => synthesizeLocally({
+      capabilities, modelId: model.id, text, onAudio, onProgress,
+    }),
   })
 
   const previewClone = (record, text = preview) => runSynthesis({
     speakingId: record.id,
     sampleRate: 24_000,
-    makeSession: async (onAudio) => {
+    makeSession: async (onAudio, onProgress) => {
       const samples = await loadCloneSamples(record.id)
       return synthesizeLocally({
         capabilities,
@@ -510,6 +526,7 @@ export default function VoiceApp({ appId }) {
         clonedVoiceSamples: samples,
         text,
         onAudio,
+        onProgress,
       })
     },
   })
@@ -849,7 +866,8 @@ export default function VoiceApp({ appId }) {
                       >
                         <span>
                           <span className="vc-voice-name">{clonedRecord ? clonedRecord.name : 'Clone Voice'}</span>
-                          <span className="vc-voice-meta">{!engineReady ? 'Download the language first' : clonedRecord ? (cloneIsActive ? 'Your voice · read everywhere' : 'Saved on your instance') : 'Record your own voice'}</span>
+                          <span className="vc-voice-meta" aria-live="polite">{speaking === clonedRecord?.id && previewStage ? previewStage : !engineReady ? 'Download the language first' : clonedRecord ? (cloneIsActive ? 'Your voice · read everywhere' : 'Saved on your instance') : 'Record your own voice'}</span>
+                          {clonedRecord?.noisy && <span className="vc-voice-meta vc-voice-warning">Background noise is copied into this voice. Re-clone somewhere quiet.</span>}
                         </span>
                         <span className="vc-voice-action">{cloneIsActive ? 'Selected' : clonedRecord ? 'Select' : 'Set up'}</span>
                       </button>
@@ -897,7 +915,7 @@ export default function VoiceApp({ appId }) {
                     <span className="vc-model-icon" aria-hidden="true"><TextToSpeech /></span>
                     <div className="vc-card-main">
                       <div className={`vc-card-title${recording ? ' vc-recording' : ''}`}>{recording ? 'Recording…' : recordingPending ? 'Allow microphone access' : clonedRecord ? 'Re-clone Voice' : 'Set up Clone Voice'}</div>
-                      <div className="vc-card-sub">Read the short script, naturally and at your usual pace.</div>
+                      <div className="vc-card-sub">Find a quiet room and hold the phone close. Start reading as soon as you tap Record, naturally and at your usual pace. The clone copies the whole recording, including the room around you.</div>
                       <div className="vc-read-prompt">
                         <strong>Say this</strong>
                         <p>{clonePrompt}</p>
@@ -927,7 +945,7 @@ export default function VoiceApp({ appId }) {
               </div>
               <section className="vc-card vc-preview">
                 <div className="vc-preview-head">
-                  <div className="vc-preview-copy"><strong>Example</strong><span>{active?.language === language ? active.voice : 'Select a voice above'}</span></div>
+                  <div className="vc-preview-copy"><strong>Example</strong><span aria-live="polite">{speaking === active?.id && previewStage ? previewStage : active?.language === language ? active.voice : 'Select a voice above'}</span></div>
                   <button
                     className={`vc-btn ${speaking === active?.id ? 'vc-btn-secondary' : 'vc-btn-primary'}`}
                     type="button"

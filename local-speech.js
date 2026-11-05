@@ -15,7 +15,10 @@
 const SPEECH_MODELS = 'device.speech-models'
 const WORKER_URL = '/speech/pocket-tts-worker.js'
 const WASM_URL = '/speech/pocket-tts-xn.wasm'
-const LOAD_TIMEOUT_MS = 120_000
+// The engine reports something (a model chunk, a stage, audio) every few
+// seconds while it works. Silence this long means the worker died, typically
+// because the device ran out of memory, which browsers do not report.
+const STALL_TIMEOUT_MS = 60_000
 
 function speechError(message) {
   return new Error(message)
@@ -47,9 +50,11 @@ export function synthesizeLocally({
   let done = false
 
   let blobUrl = ''
+  let timer = 0
   const stop = () => {
     if (done) return
     done = true
+    clearTimeout(timer)
     try { session?.cancel?.() } catch { /* already closed */ }
     try { worker?.terminate() } catch { /* already gone */ }
     if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = '' }
@@ -61,10 +66,14 @@ export function synthesizeLocally({
     fail(error)
   }
 
-  const timer = setTimeout(
-    () => rejectWith(speechError('The speech engine took too long to start.')),
-    LOAD_TIMEOUT_MS,
-  )
+  const stillWorking = () => {
+    if (done) return
+    clearTimeout(timer)
+    timer = setTimeout(() => rejectWith(speechError(
+      'The speech engine stopped responding. Close other apps to free memory, then try again.',
+    )), STALL_TIMEOUT_MS)
+  }
+  stillWorking()
 
   const attach = () => {
     worker.onerror = (event) => rejectWith(speechError(
@@ -75,6 +84,11 @@ export function synthesizeLocally({
 
   function handleMessage(data) {
     if (!data || done) return
+    stillWorking()
+    if (data.type === 'load-progress') {
+      onProgress?.({ stage: 'preparing' })
+      return
+    }
     if (data.type === 'load-ready') {
       // The worker has compiled the engine and reserved the model's buffer.
       // Only now may the bytes start arriving.
@@ -89,6 +103,7 @@ export function synthesizeLocally({
       return
     }
     if (data.type === 'load-complete') {
+      onProgress?.({ stage: 'generating' })
       send({ type: 'generate', requestId: 'local-1', text })
       return
     }
@@ -97,13 +112,11 @@ export function synthesizeLocally({
       return
     }
     if (data.type === 'generate-complete') {
-      clearTimeout(timer)
       stop()
       settle({ ok: true })
       return
     }
     if (data.type === 'worker-error' || data.type === 'generate-error') {
-      clearTimeout(timer)
       rejectWith(speechError(data.error?.message || 'Speech stopped unexpectedly.'))
     }
   }
@@ -154,7 +167,10 @@ export function synthesizeLocally({
       bytes: value.bytes,
     }, [value.bytes])
   })
-  session.on('progress', (value) => onProgress?.(value))
+  session.on('progress', (value) => {
+    stillWorking()
+    onProgress?.({ stage: 'loading', percent: Number(value) || 0 })
+  })
   session.result
     .then(() => send({ type: 'load-finish' }))
     .catch((error) => {
@@ -165,7 +181,6 @@ export function synthesizeLocally({
   return {
     result,
     cancel() {
-      clearTimeout(timer)
       stop()
       settle({ ok: false, cancelled: true })
     },
