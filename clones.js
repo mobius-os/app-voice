@@ -23,6 +23,8 @@ const MIN_CLONE_SIGNAL_RANGE = 0.005
 const NOISY_MARGIN_DB = 30
 // Keep this much of the room before the first word so the onset stays natural.
 const LEAD_IN_SECONDS = 0.15
+// Less room than this before the first word is too little to judge it by.
+const MIN_ROOM_SECONDS = 0.25
 const LEVEL_FRAME = CLONE_SAMPLE_RATE / 50
 
 const LANGUAGE_ENGINE = Object.freeze({
@@ -139,37 +141,36 @@ function frameLevels(samples) {
   return levels
 }
 
-function percentile(sorted, fraction) {
+function percentile(levels, fraction) {
+  const sorted = Array.from(levels).sort((a, b) => a - b)
   return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]
 }
 
-// The voice's typical level (90th percentile of 20 ms frames) and the room's
-// (10th percentile, ignoring exact digital silence before the mic opens).
-function speechAndRoomLevels(samples) {
-  const audible = Array.from(frameLevels(samples)).filter((level) => level > -120).sort((a, b) => a - b)
-  if (!audible.length) return null
-  return { speech: percentile(audible, 0.9), room: percentile(audible, 0.1) }
-}
-
-/** Whether the room is loud enough that the clone will reproduce it. */
-export function cloneRecordingIsNoisy(samples) {
-  const levels = speechAndRoomLevels(samples)
-  return Boolean(levels) && levels.speech - levels.room < NOISY_MARGIN_DB
-}
-
-// Drop the dead air before the first word. The 8-second take starts when the
-// mic opens, not when you start speaking; that lead-in is only room sound,
-// which the clone would otherwise learn as part of the voice.
-function trimLeadIn(samples) {
-  const levels = speechAndRoomLevels(samples)
-  if (!levels) return samples
-  const onsetLevel = levels.speech - 20
-  const frames = frameLevels(samples)
-  const onset = frames.findIndex((level) => level > onsetLevel)
-  if (onset <= 0) return samples
+/**
+ * Where the first word starts, and whether the room heard before it is loud
+ * enough that the clone will reproduce it. The 8-second take starts when the
+ * mic opens, not when you start speaking, so the audio before the first word
+ * is the only reliable sample of the room: the short gaps between words never
+ * fall as quiet as it. When there is too little of it to judge, do not warn.
+ */
+function analyseTake(samples) {
+  const levels = frameLevels(samples)
+  const audible = levels.filter((level) => level > -120)
+  if (!audible.length) return { start: 0, noisy: false }
+  const speech = percentile(audible, 0.9)
+  const onset = levels.findIndex((level) => level > speech - 20)
+  // Exact digital silence before the mic opens is not the room.
+  const room = levels.subarray(0, onset).filter((level) => level > -120)
+  const noisy = room.length * LEVEL_FRAME >= MIN_ROOM_SECONDS * CLONE_SAMPLE_RATE
+    && speech - percentile(room, 0.5) < NOISY_MARGIN_DB
   const start = Math.max(0, onset * LEVEL_FRAME - Math.round(LEAD_IN_SECONDS * CLONE_SAMPLE_RATE))
-  const trimmed = samples.subarray(start)
-  return trimmed.length >= CLONE_SAMPLE_RATE * MIN_CLONE_SECONDS ? trimmed : samples
+  return { start, noisy }
+}
+
+// Drop the dead air before the first word: it is only room sound, which the
+// clone would otherwise learn as part of the voice.
+function trimLeadIn(samples, start) {
+  return samples.length - start >= CLONE_SAMPLE_RATE * MIN_CLONE_SECONDS ? samples.slice(start) : samples
 }
 
 function storage() {
@@ -188,14 +189,12 @@ export async function listClones() {
     // The active-voice pointer lives beside the clones but is not one; a real
     // clone always carries its language. Skip anything without one.
     if (!record || !record.id || !record.language) return null
-    let noisy = false
-    try { noisy = cloneRecordingIsNoisy(decodePcm16(record.pcm16Base64)) } catch {}
     return {
       id: record.id,
       name: record.name || 'My voice',
       language: record.language,
       createdAt: record.createdAt || 0,
-      noisy,
+      noisy: record.noisy === true,
     }
   }))
   return records.filter(Boolean).sort((a, b) => b.createdAt - a.createdAt)
@@ -225,7 +224,9 @@ export async function saveClone({ name, language, samples, sampleRate }) {
     throw new Error('That recording could not be saved.')
   }
   const bounded = samples.subarray(0, Math.round(sampleRate * MAX_CLONE_SECONDS))
-  const resampled = trimLeadIn(await resampleMono(bounded, sampleRate))
+  const take = await resampleMono(bounded, sampleRate)
+  const { start, noisy } = analyseTake(take)
+  const resampled = trimLeadIn(take, start)
   if (resampled.length < CLONE_SAMPLE_RATE * MIN_CLONE_SECONDS) {
     const error = new Error(`Record at least ${MIN_CLONE_SECONDS} seconds of clear speech.`)
     error.code = 'too_short'
@@ -238,16 +239,12 @@ export async function saveClone({ name, language, samples, sampleRate }) {
     language,
     sampleRate: CLONE_SAMPLE_RATE,
     pcm16Base64: encodePcm16(resampled),
+    leadInTrimmed: true,
+    noisy,
     createdAt: Date.now(),
   }
   await storage().set(clonePath(record.id), record)
-  return {
-    id: record.id,
-    name: record.name,
-    language: record.language,
-    createdAt: record.createdAt,
-    noisy: cloneRecordingIsNoisy(resampled),
-  }
+  return { id: record.id, name: record.name, language: record.language, createdAt: record.createdAt, noisy }
 }
 
 /** Load one clone's recording as 24 kHz mono PCM for synthesis. */
@@ -266,7 +263,7 @@ export async function loadCloneSamples(id) {
   }
   assertUsableCloneSignal(samples)
   // Recordings saved before lead-in trimming existed get the same treatment.
-  return Float32Array.from(trimLeadIn(samples))
+  return record.leadInTrimmed ? samples : trimLeadIn(samples, analyseTake(samples).start)
 }
 
 export async function removeClone(id) {

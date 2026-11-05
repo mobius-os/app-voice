@@ -162,7 +162,7 @@ const CSS = `
 .vc-preview-head { display: flex; align-items: center; gap: 10px; }
 .vc-preview-copy { flex: 1; }
 .vc-preview-copy strong { display: block; font-size: 15px; }
-.vc-preview-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.vc-preview-copy > span { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
 
 /* mobius-ui:Input v1 — keep in sync; library candidate. Diverge below the marker only. */
 .vc-input, .vc-textarea {
@@ -240,6 +240,16 @@ function engineStatus(engine) {
   return 'Not downloaded'
 }
 
+// What a preview is doing before its first sound, or the idle text. Only the
+// stage is live, so a screen reader hears each stage once rather than every
+// percent of the download.
+function PreviewStage({ stage, idle }) {
+  return <>
+    <span aria-live="polite">{stage ? stage.label : idle}</span>
+    {stage?.percent != null && ` · ${stage.percent}%`}
+  </>
+}
+
 export default function VoiceApp({ appId }) {
   const [catalog, setCatalog] = useState({
     activeModelId: '', engines: [], models: [],
@@ -254,7 +264,7 @@ export default function VoiceApp({ appId }) {
   // What a preview is doing before its first sound. Loading the language model
   // and preparing a voice can take tens of seconds on a phone; without this
   // the Stop button is the only sign anything is happening.
-  const [previewStage, setPreviewStage] = useState('')
+  const [previewStage, setPreviewStage] = useState(null)
   const [cloneOpen, setCloneOpen] = useState(false)
   const [recording, setRecording] = useState(false)
   const [recordingPending, setRecordingPending] = useState(false)
@@ -348,7 +358,7 @@ export default function VoiceApp({ appId }) {
     try { if (globalThis.navigator?.audioSession) globalThis.navigator.audioSession.type = 'auto' } catch {}
     nextAtRef.current = 0
     setSpeaking('')
-    setPreviewStage('')
+    setPreviewStage(null)
   }, [])
 
   useEffect(() => () => {
@@ -455,16 +465,16 @@ export default function VoiceApp({ appId }) {
     const output = context.destination
     nextAtRef.current = context.currentTime + .12
     setSpeaking(speakingId)
-    setPreviewStage('Loading voice…')
+    setPreviewStage({ label: 'Loading voice', percent: 0 })
     const showProgress = (value) => {
       if (audioContextRef.current !== context) return
-      if (value?.stage === 'loading') setPreviewStage(`Loading voice · ${Math.round(value.percent || 0)}%`)
-      else if (value?.stage === 'preparing') setPreviewStage('Preparing voice…')
-      else if (value?.stage === 'generating') setPreviewStage('Starting to speak…')
+      if (value?.stage === 'loading') setPreviewStage({ label: 'Loading voice', percent: Math.round(value.percent || 0) })
+      else if (value?.stage === 'preparing') setPreviewStage({ label: 'Preparing voice…' })
+      else if (value?.stage === 'generating') setPreviewStage({ label: 'Starting to speak…' })
     }
     const queueSamples = (samples) => {
       if (!(samples instanceof Float32Array) || !samples.length || audioContextRef.current !== context) return
-      setPreviewStage('')
+      setPreviewStage(null)
       const buffer = context.createBuffer(1, samples.length, sampleRate)
       buffer.copyToChannel(samples, 0)
       const source = context.createBufferSource()
@@ -863,11 +873,12 @@ export default function VoiceApp({ appId }) {
                         onClick={() => clonedRecord ? (cloneIsActive ? undefined : selectClone(clonedRecord)) : setCloneOpen(true)}
                         disabled={recordingInFlight || Boolean(busy) || !engineReady || cloneIsActive}
                         aria-label={clonedRecord ? `Use ${clonedRecord.name} as your voice` : `Set up a cloned ${language} voice`}
+                        aria-describedby={clonedRecord?.noisy ? 'vc-clone-noisy' : undefined}
                       >
                         <span>
                           <span className="vc-voice-name">{clonedRecord ? clonedRecord.name : 'Clone Voice'}</span>
-                          <span className="vc-voice-meta" aria-live="polite">{speaking === clonedRecord?.id && previewStage ? previewStage : !engineReady ? 'Download the language first' : clonedRecord ? (cloneIsActive ? 'Your voice · read everywhere' : 'Saved on your instance') : 'Record your own voice'}</span>
-                          {clonedRecord?.noisy && <span className="vc-voice-meta vc-voice-warning">Background noise is copied into this voice. Re-clone somewhere quiet.</span>}
+                          <span className="vc-voice-meta"><PreviewStage stage={speaking === clonedRecord?.id && previewStage} idle={!engineReady ? 'Download the language first' : clonedRecord ? (cloneIsActive ? 'Your voice · read everywhere' : 'Saved on your instance') : 'Record your own voice'} /></span>
+                          {clonedRecord?.noisy && <span className="vc-voice-meta vc-voice-warning" id="vc-clone-noisy">Background noise is copied into this voice. Re-clone somewhere quiet.</span>}
                         </span>
                         <span className="vc-voice-action">{cloneIsActive ? 'Selected' : clonedRecord ? 'Select' : 'Set up'}</span>
                       </button>
@@ -945,7 +956,7 @@ export default function VoiceApp({ appId }) {
               </div>
               <section className="vc-card vc-preview">
                 <div className="vc-preview-head">
-                  <div className="vc-preview-copy"><strong>Example</strong><span aria-live="polite">{speaking === active?.id && previewStage ? previewStage : active?.language === language ? active.voice : 'Select a voice above'}</span></div>
+                  <div className="vc-preview-copy"><strong>Example</strong><span><PreviewStage stage={speaking === active?.id && previewStage} idle={active?.language === language ? active.voice : 'Select a voice above'} /></span></div>
                   <button
                     className={`vc-btn ${speaking === active?.id ? 'vc-btn-secondary' : 'vc-btn-primary'}`}
                     type="button"

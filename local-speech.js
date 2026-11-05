@@ -15,10 +15,12 @@
 const SPEECH_MODELS = 'device.speech-models'
 const WORKER_URL = '/speech/pocket-tts-worker.js'
 const WASM_URL = '/speech/pocket-tts-xn.wasm'
-// The engine reports something (a model chunk, a stage, audio) every few
-// seconds while it works. Silence this long means the worker died, typically
-// because the device ran out of memory, which browsers do not report.
-const STALL_TIMEOUT_MS = 60_000
+// The engine reports something (a model chunk, a stage, audio) as it works,
+// except while it sets up the downloaded model and encodes a clone, which can
+// take tens of seconds on a phone without a word. Silence longer than that
+// means the worker died, typically because the device ran out of memory, which
+// browsers do not report.
+const STALL_TIMEOUT_MS = 120_000
 
 function speechError(message) {
   return new Error(message)
@@ -169,7 +171,7 @@ export function synthesizeLocally({
   })
   session.on('progress', (value) => {
     stillWorking()
-    onProgress?.({ stage: 'loading', percent: Number(value) || 0 })
+    onProgress?.({ stage: 'loading', percent: Number(value?.percent) || 0 })
   })
   session.result
     .then(() => send({ type: 'load-finish' }))
