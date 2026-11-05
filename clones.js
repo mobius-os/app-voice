@@ -17,15 +17,6 @@ const MIN_SOURCE_SAMPLE_RATE = 8_000
 const MAX_SOURCE_SAMPLE_RATE = 384_000
 const MIN_CLONE_SIGNAL_RMS = 0.001
 const MIN_CLONE_SIGNAL_RANGE = 0.005
-// Speech in a usable sample stands well clear of the room: a quiet room sits
-// 40 dB or more below the voice. Pocket TTS reproduces whatever the sample
-// sounds like, so below this margin the clone audibly carries the background.
-const NOISY_MARGIN_DB = 30
-// Keep this much of the room before the first word so the onset stays natural.
-const LEAD_IN_SECONDS = 0.15
-// Less room than this before the first word is too little to judge it by.
-const MIN_ROOM_SECONDS = 0.25
-const LEVEL_FRAME = CLONE_SAMPLE_RATE / 50
 
 const LANGUAGE_ENGINE = Object.freeze({
   English: 'pocket-tts-xn-q8-english',
@@ -128,51 +119,6 @@ function assertUsableCloneSignal(samples) {
   if (Math.sqrt(variance / samples.length) < MIN_CLONE_SIGNAL_RMS) throw silentCloneError()
 }
 
-function frameLevels(samples) {
-  const frames = Math.floor(samples.length / LEVEL_FRAME)
-  const levels = new Float64Array(frames)
-  for (let index = 0; index < frames; index += 1) {
-    let energy = 0
-    for (let offset = index * LEVEL_FRAME; offset < (index + 1) * LEVEL_FRAME; offset += 1) {
-      energy += samples[offset] * samples[offset]
-    }
-    levels[index] = 20 * Math.log10(Math.sqrt(energy / LEVEL_FRAME) + 1e-12)
-  }
-  return levels
-}
-
-function percentile(levels, fraction) {
-  const sorted = Array.from(levels).sort((a, b) => a - b)
-  return sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * fraction))]
-}
-
-/**
- * Where the first word starts, and whether the room heard before it is loud
- * enough that the clone will reproduce it. The 8-second take starts when the
- * mic opens, not when you start speaking, so the audio before the first word
- * is the only reliable sample of the room: the short gaps between words never
- * fall as quiet as it. When there is too little of it to judge, do not warn.
- */
-function analyseTake(samples) {
-  const levels = frameLevels(samples)
-  const audible = levels.filter((level) => level > -120)
-  if (!audible.length) return { start: 0, noisy: false }
-  const speech = percentile(audible, 0.9)
-  const onset = levels.findIndex((level) => level > speech - 20)
-  // Exact digital silence before the mic opens is not the room.
-  const room = levels.subarray(0, onset).filter((level) => level > -120)
-  const noisy = room.length * LEVEL_FRAME >= MIN_ROOM_SECONDS * CLONE_SAMPLE_RATE
-    && speech - percentile(room, 0.5) < NOISY_MARGIN_DB
-  const start = Math.max(0, onset * LEVEL_FRAME - Math.round(LEAD_IN_SECONDS * CLONE_SAMPLE_RATE))
-  return { start, noisy }
-}
-
-// Drop the dead air before the first word: it is only room sound, which the
-// clone would otherwise learn as part of the voice.
-function trimLeadIn(samples, start) {
-  return samples.length - start >= CLONE_SAMPLE_RATE * MIN_CLONE_SECONDS ? samples.slice(start) : samples
-}
-
 function storage() {
   const store = globalThis.mobius?.storage
   if (!store) throw new Error('Voice storage is unavailable in this version of Möbius.')
@@ -194,7 +140,6 @@ export async function listClones() {
       name: record.name || 'My voice',
       language: record.language,
       createdAt: record.createdAt || 0,
-      noisy: record.noisy === true,
     }
   }))
   return records.filter(Boolean).sort((a, b) => b.createdAt - a.createdAt)
@@ -224,9 +169,7 @@ export async function saveClone({ name, language, samples, sampleRate }) {
     throw new Error('That recording could not be saved.')
   }
   const bounded = samples.subarray(0, Math.round(sampleRate * MAX_CLONE_SECONDS))
-  const take = await resampleMono(bounded, sampleRate)
-  const { start, noisy } = analyseTake(take)
-  const resampled = trimLeadIn(take, start)
+  const resampled = await resampleMono(bounded, sampleRate)
   if (resampled.length < CLONE_SAMPLE_RATE * MIN_CLONE_SECONDS) {
     const error = new Error(`Record at least ${MIN_CLONE_SECONDS} seconds of clear speech.`)
     error.code = 'too_short'
@@ -239,12 +182,10 @@ export async function saveClone({ name, language, samples, sampleRate }) {
     language,
     sampleRate: CLONE_SAMPLE_RATE,
     pcm16Base64: encodePcm16(resampled),
-    leadInTrimmed: true,
-    noisy,
     createdAt: Date.now(),
   }
   await storage().set(clonePath(record.id), record)
-  return { id: record.id, name: record.name, language: record.language, createdAt: record.createdAt, noisy }
+  return { id: record.id, name: record.name, language: record.language, createdAt: record.createdAt }
 }
 
 /** Load one clone's recording as 24 kHz mono PCM for synthesis. */
@@ -262,8 +203,7 @@ export async function loadCloneSamples(id) {
     throw new Error('That cloned voice could not be loaded.')
   }
   assertUsableCloneSignal(samples)
-  // Recordings saved before lead-in trimming existed get the same treatment.
-  return record.leadInTrimmed ? samples : trimLeadIn(samples, analyseTake(samples).start)
+  return samples
 }
 
 export async function removeClone(id) {

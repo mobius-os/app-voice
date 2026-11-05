@@ -106,7 +106,6 @@ const CSS = `
 .vc-voice-choice:disabled, .vc-sample-btn:disabled { cursor: default; opacity: .58; }
 .vc-voice-name { display: block; font-size: 14px; font-weight: 720; }
 .vc-voice-meta { display: block; margin-top: 3px; color: var(--muted); font-size: 10.5px; }
-.vc-voice-warning { color: var(--danger); }
 .vc-voice-action { flex: 0 0 auto; color: var(--accent); font-size: 11px; font-weight: 750; }
 .vc-voice-option.is-selected .vc-voice-action { color: var(--green); }
 .vc-sample-btn {
@@ -873,12 +872,10 @@ export default function VoiceApp({ appId }) {
                         onClick={() => clonedRecord ? (cloneIsActive ? undefined : selectClone(clonedRecord)) : setCloneOpen(true)}
                         disabled={recordingInFlight || Boolean(busy) || !engineReady || cloneIsActive}
                         aria-label={clonedRecord ? `Use ${clonedRecord.name} as your voice` : `Set up a cloned ${language} voice`}
-                        aria-describedby={clonedRecord?.noisy ? 'vc-clone-noisy' : undefined}
                       >
                         <span>
                           <span className="vc-voice-name">{clonedRecord ? clonedRecord.name : 'Clone Voice'}</span>
                           <span className="vc-voice-meta"><PreviewStage stage={speaking === clonedRecord?.id && previewStage} idle={!engineReady ? 'Download the language first' : clonedRecord ? (cloneIsActive ? 'Your voice · read everywhere' : 'Saved on your instance') : 'Record your own voice'} /></span>
-                          {clonedRecord?.noisy && <span className="vc-voice-meta vc-voice-warning" id="vc-clone-noisy">Background noise is copied into this voice. Re-clone somewhere quiet.</span>}
                         </span>
                         <span className="vc-voice-action">{cloneIsActive ? 'Selected' : clonedRecord ? 'Select' : 'Set up'}</span>
                       </button>
